@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="santio.ignatius">
+    <meta name="description" content="A standalone private productivity web app. Distributed for free.">
+    <title>My Work Desk - V 2.0 (Beta)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @keyframes blink-red { 0%, 100% { background-color: transparent; } 50% { background-color: #fee2e2; } }
+        .animate-blink-red { animation: blink-red 1s infinite; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f8fafc;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #root { 
+            height: 100%; 
+            display: flex; 
+            flex-direction: column; 
+        }
+
+        .cursor-grab { cursor: grab; }
+        .cursor-grabbing { cursor: grabbing; }
+
+        .manual-section { border-right: 1px dashed #e2e8f0; padding: 0 1.5rem; }
+        .manual-section:last-child { border-right: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect, memo, useMemo, useCallback } = React;
+        
+        const Icon = ({ name, size = 16, className = "" }) => {
+            const icons = {
+                'layout': '📋', 'clock': '🕒', 'pin': '📌', 'check-circle': '✅', 
+                'rotate-ccw': '↺', 'plus': '＋', 'bell': '🔔', 'inbox': '📥', 
+                'more-horizontal': '•••', 'maximize-2': '↗', 'trash-2': '🗑️', 
+                'calendar-check': '📅', 'grid': '田', 'x': '✕', 'refresh': '🔃',
+                'download': '📥', 'upload': '📤', 'help': '📖', 'code': '👨‍💻'
+            };
+            return (
+                <span className={`inline-flex items-center justify-center select-none ${className}`} 
+                      style={{ width: size, height: size, fontSize: `${size * 0.9}px`, lineHeight: 1 }}>
+                    {icons[name] || '?'}
+                </span>
+            );
+        };
+
+        const COLORS = [
+            { name: 'Yellow', bg: 'bg-yellow-100' },
+            { name: 'Blue', bg: 'bg-blue-100' },
+            { name: 'Green', bg: 'bg-green-100' },
+            { name: 'Red', bg: 'bg-red-100' },
+            { name: 'Purple', bg: 'bg-purple-100' },
+        ];
+
+        const DEFAULT_COLUMNS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+        const SchedulerUI = memo(({ note, onUpdate }) => {
+            const minDateTime = useMemo(() => new Date().toISOString().slice(0, 16), [note.isNotified]);
+            return (
+                <div className="flex items-center space-x-1 no-drag mt-2">
+                    <Icon name="clock" size={11} className="opacity-50" />
+                    <input 
+                        type="datetime-local" 
+                        className="text-[9px] bg-white/60 border border-slate-200/50 rounded px-1 py-0.5 outline-none text-slate-600 w-full no-drag cursor-pointer hover:bg-white transition-colors"
+                        value={note.scheduledAt || ''}
+                        min={minDateTime}
+                        onChange={(e) => onUpdate(note.id, { scheduledAt: e.target.value || null })}
+                    />
+                </div>
+            );
+        });
+
+        const ListItem = memo(({ note, onUpdate, onDragStart, activeTab }) => {
+            const canDrag = note.status !== 'done';
+            return (
+                <div draggable={canDrag} onDragStart={(e) => canDrag && onDragStart(e, note.id)}
+                     className={`group flex items-start p-2.5 rounded-lg shadow-sm border border-black/5 transition-all relative overflow-visible ${note.color} ${note.status === 'done' ? 'border-slate-300 opacity-70 grayscale-[0.3]' : 'hover:shadow-md cursor-grab active:cursor-grabbing'} min-h-[48px]`}>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-1 mb-0.5">
+                            {note.isPinned && !['Notifications', 'Completed', 'Help'].includes(activeTab) && <Icon name="pin" size={10} className="text-blue-500 fill-blue-500" />}
+                            <span className="text-[9px] font-bold text-slate-500 uppercase truncate shrink-0 opacity-70">{note.category}</span>
+                            <div className="flex items-center space-x-1 overflow-hidden">
+                                {note.scheduledAt && <Icon name="clock" size={10} className="opacity-40" />}
+                                {note.isNotified && <Icon name="bell" size={10} className="animate-pulse text-red-500" />}
+                            </div>
+                        </div>
+                        <textarea className={`w-full bg-transparent border-none resize-none text-xs font-bold focus:ring-0 p-0 leading-tight no-drag overflow-hidden ${note.status === 'done' ? 'line-through text-slate-500 italic opacity-60' : 'text-slate-700'}`} 
+                                  value={note.text} onChange={(e) => onUpdate(note.id, { text: e.target.value })} maxLength={25} rows={2} />
+                        {note.status !== 'done' && (
+                            <div className="max-h-0 group-hover:max-h-20 overflow-visible transition-all duration-300 opacity-0 group-hover:opacity-100">
+                               <SchedulerUI note={note} onUpdate={onUpdate} />
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex flex-col space-y-1.5 ml-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 no-drag">
+                        {!['Notifications', 'Completed', 'Help'].includes(activeTab) && (
+                            <button onClick={() => onUpdate(note.id, { isPinned: !note.isPinned })} className={`p-1 rounded ${note.isPinned ? 'opacity-100' : 'opacity-40 hover:opacity-100'}`}>
+                                <Icon name="pin" size={12} />
+                            </button>
+                        )}
+                        <button onClick={() => onUpdate(note.id, { status: note.status === 'done' ? 'todo' : 'done' })} className="p-1 rounded opacity-40 hover:opacity-100 hover:text-green-500">
+                            {note.status === 'done' ? <Icon name="rotate-ccw" size={14} /> : <Icon name="check-circle" size={14} />}
+                        </button>
+                    </div>
+                </div>
+            );
+        });
+
+        const DeskNote = memo(({ note, onMouseDown, onDragStart, onUpdate, activeTab, isDragged }) => {
+            const pos = note.viewPositions?.[activeTab] || { x: 40, y: 40 };
+            return (
+                <div onMouseDown={(e) => onMouseDown(e, note.id)} draggable onDragStart={(e) => onDragStart(e, note.id)}
+                     className={`absolute p-2.5 rounded-lg shadow-sm border transition-all w-48 sm:w-52 min-h-[48px] ${note.color} border-black/10 cursor-move hover:shadow-xl flex flex-col group overflow-visible ${isDragged ? 'z-[101] shadow-2xl scale-105 opacity-90' : 'z-10 hover:z-[100]'}`} 
+                     style={{ left: pos.x, top: pos.y }}>
+                    <div className="flex justify-between items-start mb-0.5 opacity-60 text-[8px] font-bold uppercase tracking-widest">
+                        <span className="flex items-center shrink-0 truncate max-w-[70%]">
+                            {note.category}
+                            <div className="flex items-center space-x-1 ml-1 overflow-hidden">
+                                {note.scheduledAt && <Icon name="clock" size={9} />}
+                                {note.isNotified && <Icon name="bell" size={9} className="animate-pulse text-red-500" />}
+                            </div>
+                        </span>
+                        <div className="flex space-x-1 no-drag transition-opacity opacity-0 group-hover:opacity-100">
+                            <button onClick={() => onUpdate(note.id, { status: note.status === 'done' ? 'todo' : 'done' })} className="no-drag p-1 rounded hover:bg-black/5">
+                                {note.status === 'done' ? <Icon name="rotate-ccw" size={16} className="text-green-600" /> : <Icon name="check-circle" size={12} className="text-slate-400" />}
+                            </button>
+                        </div>
+                    </div>
+                    <textarea className={`w-full bg-transparent border-none resize-none text-xs font-bold focus:ring-0 p-0 leading-tight no-drag overflow-hidden truncate ${note.status === 'done' ? 'line-through text-slate-500 italic opacity-40' : 'text-slate-800'}`} 
+                              value={note.text} onChange={(e) => onUpdate(note.id, { text: e.target.value })} maxLength={25} rows={1} />
+                    <div className="max-h-0 group-hover:max-h-20 overflow-visible transition-all duration-300 opacity-0 group-hover:opacity-100">
+                        {note.status !== 'done' && <SchedulerUI note={note} onUpdate={onUpdate} />}
+                    </div>
+                    {activeTab !== 'Completed' && (
+                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white rounded-full px-2 py-1 shadow-md border border-slate-200 flex space-x-1 opacity-0 group-hover:opacity-100 transition-all no-drag z-[60] scale-90 translate-y-2 pointer-events-none group-hover:pointer-events-auto group-hover:translate-y-0">
+                            {COLORS.map(c => <button key={c.name} onClick={() => onUpdate(note.id, { color: c.bg })} className={`w-3 h-3 rounded-full ${c.bg} border border-black/5 hover:scale-125 transition-transform no-drag`} />)}
+                        </div>
+                    )}
+                </div>
+            );
+        });
+
+        const ManualView = () => (
+            <div className="h-full w-full flex p-10 select-text overflow-y-auto no-scrollbar bg-white/60">
+                <div className="flex flex-col w-full gap-y-12 h-fit">
+                    <div className="grid grid-cols-4 w-full gap-0">
+                        <div className="manual-section">
+                            <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-4 border-b border-blue-100 pb-2">01. Desks & Notes</h2>
+                            <ul className="text-[11px] space-y-4 text-slate-600 leading-relaxed">
+                                <li><strong className="text-slate-800 font-bold">Custom Desks:</strong> Create up to 6 custom Desks using the ＋ in the bar. Drag Desks to reorder them. "All" will display notes from all Desks across, while respective Desks get a filtered view of that specific Desk.</li>
+                                <li><strong className="text-slate-800 font-bold">Add Notes:</strong> Use the main ＋ button on the right bottom of the active Desks to add a sticky note to the respective Desk.</li>
+                                <li><strong className="text-slate-800 font-bold">Color Picker:</strong> Hover a note on any Desk to change its color via the floating bubble menu.</li>
+                                <li><strong className="text-slate-800 font-bold">Organization:</strong> Drag notes freely. Use 田 to automatically align notes in a neat grid.</li>
+                            </ul>
+                        </div>
+                        <div className="manual-section">
+                            <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-4 border-b border-blue-100 pb-2">02. Board</h2>
+                            <ul className="text-[11px] space-y-4 text-slate-600 leading-relaxed">
+                                <li><strong className="text-slate-800 font-bold">Default Weekly Flow:</strong> The Board starts with a Monday-Friday setup. Columns can be deleted or custom-created (up to 5) to suit individual needs. Drag notes across columns to let it flow.</li>
+                                <li><strong className="text-slate-800 font-bold">Reordering:</strong> Drag column headers to drag and reorder your entire workflow.</li>
+                                <li><strong className="text-slate-800 font-bold">Pinning:</strong> Use the 📌 icon on notes inside a column to keep them at the very top.</li>
+                            </ul>
+                        </div>
+                        <div className="manual-section">
+                            <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-4 border-b border-blue-100 pb-2">03. Reminders</h2>
+                            <ul className="text-[11px] space-y-4 text-slate-600 leading-relaxed">
+                                <li><strong className="text-slate-800 font-bold">Set Timer:</strong> Hover a note to reveal the clock. Select a date/time to schedule a reminder.</li>
+                                <li><strong className="text-slate-800 font-bold">Smart Move:</strong> Notes automatically move to the Reminders desk when the time arrives.</li>
+                                <li><strong className="text-slate-800 font-bold">Alerts:</strong> Reminder desks will pulse red until marked as read.</li>
+                            </ul>
+                        </div>
+                        <div className="manual-section">
+                            <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-4 border-b border-blue-100 pb-2">04. Finished & Delete</h2>
+                            <ul className="text-[11px] space-y-4 text-slate-600 leading-relaxed">
+                                <li><strong className="text-slate-800 font-bold">Finished Notes:</strong> Click the ✅ checkmark to mark notes done. They move to the Finished Desk archive.</li>
+                                <li><strong className="text-slate-800 font-bold">Restore Notes:</strong> In the Finished Desk, use the ↺ icon on the notes to send notes back to their respective active Desks.</li>
+                                <li><strong className="text-slate-800 font-bold">Delete Notes:</strong> Drag any note to the dashed Trash Bin at the left bottom of the Desks to remove it permanently.</li>
+                                <li><strong className="text-slate-800 font-bold">System Deletions:</strong> Deleting a Desk removes all notes within it permanently. Deleting a Column moves the notes back to their respective active Desks.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-4 w-full gap-0">
+                        <div className="manual-section">
+                            <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-4 border-b border-blue-100 pb-2">05. System Menus</h2>
+                            <ul className="text-[11px] space-y-4 text-slate-600 leading-relaxed">
+                                <li><strong className="text-slate-800 font-bold">Backup:</strong> Use the Backup button in the header to download your desk data as a JSON file.</li>
+                                <li><strong className="text-slate-800 font-bold">Import:</strong> Restore your entire workspace by uploading a backup file via the Import button.</li>
+                                <li><strong className="text-slate-800 font-bold">System Reset:</strong> The ↺ icon wipes all local data to return to factory settings.</li>
+                            </ul>
+                        </div>
+                        <div className="manual-section">
+                            <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-4 border-b border-blue-100 pb-2">06. Developer & Terms</h2>
+                            <ul className="text-[11px] space-y-4 text-slate-600 leading-relaxed">
+                                <li><strong className="text-slate-800 font-bold">Ownership:</strong> This application was custom-developed and architected by <span className="font-black text-slate-800">santio.ignatius</span>.</li>
+                                <li><strong className="text-slate-800 font-bold">Distribution:</strong> This software is distributed for <span className="text-blue-600 font-bold">FREE</span>. Users are free to use it for their productivity needs.</li>
+                                <li><strong className="text-slate-800 font-bold">License:</strong> All rights reserved. V 2.0 (Beta) stable build.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const App = () => {
+            const load = (key, fb) => { try { return JSON.parse(localStorage.getItem(key)) || fb; } catch { return fb; } };
+            const [notes, setNotes] = useState(() => load('desk_notes', [{ id: '1', text: 'Welcome to your Work Desk', color: 'bg-yellow-100', category: 'Work', status: 'todo', columnId: null, isPinned: false, viewPositions: { 'All': { x: 40, y: 40 } }, scheduledAt: null, isNotified: false, isRead: true }]));
+            const [columns, setColumns] = useState(() => load('desk_columns', DEFAULT_COLUMNS));
+            const [categories, setCategories] = useState(() => load('desk_categories', ['Work', 'Personal']));
+            const [categoryColors, setCategoryColors] = useState(() => load('desk_category_colors', { 'Work': COLORS[0].bg, 'Personal': COLORS[2].bg }));
+            const [activeTab, setActiveTab] = useState('All');
+            const [currentTime, setCurrentTime] = useState(new Date());
+            const [dialog, setDialog] = useState({ isOpen: false, type: null, data: null, inputValue: '' });
+            const [isAddingCategory, setIsAddingCategory] = useState(false);
+            const [newCatInput, setNewCatInput] = useState('');
+            const [draggedNoteId, setDraggedNoteId] = useState(null);
+            const [draggedColumnIdx, setDraggedColumnIdx] = useState(null);
+            const [draggedTabIdx, setDraggedTabIdx] = useState(null);
+            const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+            const [collapsedColumns, setCollapsedColumns] = useState({});
+            
+            // --- BUG FIX: Calibrate Initial Height for V 2.0 (Beta) ---
+            const [topHeight, setTopHeight] = useState(() => {
+                const available = window.innerHeight;
+                return Math.min(available * 0.65, available - 250);
+            });
+            
+            const isResizing = useRef(false);
+            const fileInputRef = useRef(null);
+
+            useEffect(() => {
+                localStorage.setItem('desk_notes', JSON.stringify(notes));
+                localStorage.setItem('desk_columns', JSON.stringify(columns));
+                localStorage.setItem('desk_categories', JSON.stringify(categories));
+                localStorage.setItem('desk_category_colors', JSON.stringify(categoryColors));
+            }, [notes, columns, categories, categoryColors]);
+
+            useEffect(() => {
+                const handleResize = () => {
+                    setTopHeight(prev => Math.min(prev, window.innerHeight - 250));
+                };
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
+
+            const getStaggeredPos = useCallback((tab, count) => ({ x: 40 + ((count % 12) * 25), y: 40 + ((count % 12) * 25) }), []);
+
+            useEffect(() => {
+                const timer = setInterval(() => {
+                    const now = new Date();
+                    setCurrentTime(now);
+                    setNotes(prev => {
+                        let changed = false;
+                        const notifiedCount = prev.filter(n => n.isNotified).length;
+                        let batchCounter = 0;
+                        const next = prev.map(note => {
+                            if (note.scheduledAt && !note.isNotified && note.status !== 'done' && new Date(note.scheduledAt) <= now) {
+                                changed = true;
+                                return { ...note, isNotified: true, isRead: false, columnId: null, isPinned: false, viewPositions: { ...note.viewPositions, 'Notifications': getStaggeredPos('Notifications', notifiedCount + (batchCounter++)) } };
+                            }
+                            return note;
+                        });
+                        return changed ? next : prev;
+                    });
+                }, 1000);
+                return () => clearInterval(timer);
+            }, [getStaggeredPos]);
+
+            useEffect(() => {
+                if (activeTab === 'Help') return;
+                setNotes(prev => {
+                    let changed = false;
+                    const visibleInTab = prev.filter(n => {
+                        if (activeTab === 'Notifications') return n.isNotified;
+                        if (activeTab === 'Completed') return n.status === 'done';
+                        if (n.columnId || n.status === 'done' || n.isNotified) return false;
+                        return activeTab === 'All' || n.category === activeTab;
+                    });
+                    let freshCounter = 0;
+                    const next = prev.map(note => {
+                        const shouldBeVisible = visibleInTab.some(v => v.id === note.id);
+                        if (shouldBeVisible && (!note.viewPositions || !note.viewPositions[activeTab])) {
+                            changed = true;
+                            const pos = getStaggeredPos(activeTab, freshCounter++);
+                            return { ...note, viewPositions: { ...(note.viewPositions || {}), [activeTab]: pos } };
+                        }
+                        if (shouldBeVisible) freshCounter++;
+                        return note;
+                    });
+                    return changed ? next : prev;
+                });
+                if (activeTab === 'Notifications') setNotes(p => p.map(n => n.isNotified ? { ...n, isRead: true } : n));
+            }, [activeTab, getStaggeredPos]);
+
+            const updateNote = useCallback((id, updates) => {
+                setNotes(prev => prev.map(n => {
+                    if (n.id !== id) return n;
+                    const next = { ...n, ...updates };
+                    const isExitingNotification = (updates.hasOwnProperty('scheduledAt') || updates.hasOwnProperty('columnId')) && n.isNotified && (updates.scheduledAt === null || new Date(updates.scheduledAt) > new Date() || updates.columnId !== null);
+                    const isUndoing = n.status === 'done' && updates.status === 'todo';
+                    if (isUndoing || (isExitingNotification && updates.columnId === undefined)) {
+                        next.columnId = null; next.isPinned = false; next.isNotified = false;
+                        const nextVP = { ...n.viewPositions };
+                        ['All', n.category].forEach(tab => {
+                            const count = prev.filter(x => x.id !== id && x.viewPositions?.[tab] && (tab === 'All' ? (!x.columnId && x.status !== 'done' && !x.isNotified) : (x.category === tab && !x.columnId && x.status !== 'done' && !x.isNotified))).length;
+                            nextVP[tab] = getStaggeredPos(tab, count);
+                        });
+                        next.viewPositions = nextVP;
+                    } else if (isExitingNotification && updates.columnId !== undefined) {
+                        next.isNotified = false; next.scheduledAt = null;
+                    }
+                    if (updates.status === 'done') {
+                        next.columnId = null; next.isPinned = false; next.scheduledAt = null; next.isNotified = false; next.isRead = true;
+                        next.viewPositions = { ...next.viewPositions, 'Completed': getStaggeredPos('Completed', prev.filter(x => x.status === 'done').length) };
+                    }
+                    return next;
+                }));
+            }, [getStaggeredPos]);
+
+            const addNote = () => {
+                if (isCreationRestricted) return;
+                const cat = activeTab === 'All' ? categories[0] : activeTab;
+                const count = notes.filter(n => (activeTab === 'All' ? (!n.columnId && n.status !== 'done' && !n.isNotified) : (n.category === activeTab && !n.columnId && n.status !== 'done' && !n.isNotified))).length;
+                let noteColor = categoryColors[cat] || COLORS[0].bg;
+                setNotes(prev => [...prev, { id: Date.now().toString(), text: '', color: noteColor, category: cat, status: 'todo', columnId: null, isPinned: false, viewPositions: { [activeTab]: getStaggeredPos(activeTab, count) }, scheduledAt: null, isNotified: false, isRead: true }]);
+            };
+
+            const organizeGrid = () => {
+                const visible = visibleNotes.sort((a, b) => a.text.localeCompare(b.text));
+                const gap = 16, spacingX = 208 + gap, spacingY = 78 + gap; 
+                const rect = document.getElementById('work-desk').getBoundingClientRect();
+                const cols = Math.max(1, Math.floor((rect.width - 80) / spacingX));
+                setNotes(prev => prev.map(note => {
+                    const idx = visible.findIndex(v => v.id === note.id);
+                    if (idx !== -1) return { ...note, viewPositions: { ...(note.viewPositions || {}), [activeTab]: { x: 40 + (idx % cols) * spacingX, y: 40 + Math.floor(idx / cols) * spacingY } } };
+                    return note;
+                }));
+            };
+
+            const handleExport = () => {
+                const data = { notes, columns, categories, categoryColors };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `work_desk_backup_${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            };
+
+            const handleImport = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        if (data.notes) setNotes(data.notes);
+                        if (data.columns) setColumns(data.columns);
+                        if (data.categories) setCategories(data.categories);
+                        if (data.categoryColors) setCategoryColors(data.categoryColors);
+                    } catch (err) { console.error("Import failed", err); }
+                };
+                reader.readAsText(file); e.target.value = ''; 
+            };
+
+            const confirmDialog = () => {
+                if (dialog.type === 'ADD_COLUMN' && dialog.inputValue.trim()) setColumns(p => [...p, dialog.inputValue.trim()]);
+                else if (dialog.type === 'DELETE_COLUMN') {
+                    setNotes(prev => { let c = 0; return prev.map(n => n.columnId === dialog.data ? { ...n, columnId: null, isPinned: false, viewPositions: { ...n.viewPositions, 'All': getStaggeredPos('All', prev.filter(x=>!x.columnId && x.status!=='done').length + (c++)) } } : n); });
+                    setColumns(p => p.filter(c => c !== dialog.data));
+                } else if (dialog.type === 'DELETE_CATEGORY') {
+                    setCategories(p => p.filter(c => c !== dialog.data));
+                    setNotes(p => p.filter(n => n.category !== dialog.data));
+                    if (activeTab === dialog.data) setActiveTab('All');
+                } else if (dialog.type === 'SYSTEM_RESET') { localStorage.clear(); window.location.reload(); }
+                else if (dialog.type === 'BACKUP_CONFIRM') { handleExport(); }
+                setDialog({ isOpen: false, type: null, data: null, inputValue: '' });
+            };
+
+            const handleColumnDrop = (targetIdx) => {
+                if (draggedColumnIdx === null || draggedColumnIdx === targetIdx) return;
+                const newCols = [...columns]; const [draggedItem] = newCols.splice(draggedColumnIdx, 1);
+                newCols.splice(targetIdx, 0, draggedItem); setColumns(newCols); setDraggedColumnIdx(null);
+            };
+
+            const handleTabDrop = (targetIdx) => {
+                if (draggedTabIdx === null || draggedTabIdx === targetIdx) return;
+                const newCats = [...categories]; const [draggedItem] = newCats.splice(draggedTabIdx, 1);
+                newCats.splice(targetIdx, 0, draggedItem); setCategories(newCats); setDraggedTabIdx(null);
+            };
+
+            const visibleNotes = useMemo(() => notes.filter(n => {
+                if (activeTab === 'Notifications') return n.isNotified;
+                if (activeTab === 'Completed') return n.status === 'done';
+                if (n.columnId || n.status === 'done' || n.isNotified) return false;
+                return activeTab === 'All' || n.category === activeTab;
+            }), [notes, activeTab]);
+
+            const hasUnread = notes.some(n => n.isNotified && !n.isRead);
+            const isCreationRestricted = ['All', 'Completed', 'Notifications', 'Help'].includes(activeTab);
+            const tabLimitExceeded = categories.length + 4 >= 10;
+
+            return (
+                <div className="flex flex-col h-full w-full" 
+                    onMouseMove={(e) => {
+                        if (isResizing.current) setTopHeight(Math.max(100, Math.min(window.innerHeight - 250, e.clientY)));
+                        else if (draggedNoteId && activeTab !== 'Help') {
+                            const rect = document.getElementById('work-desk').getBoundingClientRect();
+                            const x = Math.max(10, Math.min(rect.width - 200, e.clientX - rect.left - dragOffset.x));
+                            const y = Math.max(10, e.clientY - rect.top - dragOffset.y); 
+                            setNotes(prev => prev.map(n => n.id === draggedNoteId ? { ...n, viewPositions: { ...n.viewPositions, [activeTab]: { x, y } } } : n));
+                        }
+                    }} 
+                    onMouseUp={() => { isResizing.current = false; setDraggedNoteId(null); setDraggedColumnIdx(null); setDraggedTabIdx(null); }}>
+                    
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-slate-100 z-50 shrink-0">
+                        <div className="flex items-center space-x-3">
+                            <div className="bg-blue-600 p-2 rounded-xl text-white shadow-md flex items-center justify-center"><Icon name="layout" size={20} /></div>
+                            <div>
+                                <h1 className="text-lg font-black tracking-tighter text-slate-800 uppercase leading-none">My Work Desk</h1>
+                                <div className="flex flex-col mt-0.5">
+                                    <div className="flex items-center space-x-2">
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Standalone Private Web App V 2.0 (Beta)</p>
+                                        <span className="bg-slate-100 text-slate-500 text-[7px] font-black uppercase px-1.5 py-0.5 rounded tracking-widest">Free to Use</span>
+                                    </div>
+                                    <p className="text-[8px] text-blue-500 font-bold uppercase tracking-tighter mt-1">Developed by santio.ignatius</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-6">
+                            <div className="flex items-center space-x-2 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
+                                <Icon name="clock" size={14} className="text-blue-500" /><span className="text-xs font-mono font-bold text-slate-600">{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                            </div>
+                            <div className="flex items-center space-x-2 border-l pl-6 border-slate-200 h-8">
+                                <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
+                                <button onClick={() => setDialog({ isOpen: true, type: 'BACKUP_CONFIRM' })} className="flex items-center space-x-1.5 px-2.5 py-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"><Icon name="download" size={16} /><span className="text-[10px] font-bold uppercase tracking-widest">Backup</span></button>
+                                <button onClick={() => fileInputRef.current.click()} className="flex items-center space-x-1.5 px-2.5 py-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"><Icon name="upload" size={16} /><span className="text-[10px] font-bold uppercase tracking-widest">Import</span></button>
+                                <button onClick={() => setDialog({ isOpen: true, type: 'SYSTEM_RESET' })} className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all" title="System Reset"><Icon name="rotate-ccw" size={18} /></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tabs Bar */}
+                    <div className="flex items-center justify-between px-6 pt-3 bg-white border-b border-slate-200 shadow-sm z-40 shrink-0">
+                        <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar flex-1 mr-4">
+                            <button onClick={() => setActiveTab('All')} className={`flex-shrink-0 px-4 py-2 text-sm font-bold border-b-2 uppercase tracking-tight ${activeTab === 'All' ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>All</button>
+                            {categories.map((cat, idx) => (
+                                <div key={cat} draggable onDragStart={(e) => { setDraggedTabIdx(idx); e.dataTransfer.setData('type', 'tab'); }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { if (e.dataTransfer.getData('type') === 'tab') handleTabDrop(idx); }} className={`relative group shrink-0 ${draggedTabIdx === idx ? 'opacity-30' : ''}`}>
+                                    <button onClick={() => setActiveTab(cat)} className={`px-4 py-2 text-sm font-bold border-b-2 uppercase tracking-tight transition-all cursor-grab active:cursor-grabbing ${activeTab === cat ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>{cat}</button>
+                                    <button onClick={(e) => { e.stopPropagation(); setDialog({ isOpen: true, type: 'DELETE_CATEGORY', data: cat }); }} className="absolute -top-1 -right-1 bg-white border border-slate-200 rounded-full w-4 h-4 flex items-center justify-center text-[8px] opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all z-10"><Icon name="x" size={8} /></button>
+                                </div>
+                            ))}
+                            <button disabled={tabLimitExceeded} onClick={() => setIsAddingCategory(true)} className={`flex-shrink-0 w-8 h-8 mx-2 flex items-center justify-center rounded-full transition-all ${tabLimitExceeded ? 'bg-slate-50 text-slate-200 cursor-not-allowed opacity-30' : 'text-blue-500 bg-blue-50 hover:bg-blue-100'}`} title="Add Desk"><Icon name="plus" size={16} /></button>
+                            {isAddingCategory && (
+                                <form onSubmit={(e) => { e.preventDefault(); const n = newCatInput.trim(); if (n) { setCategories(p => [...p, n]); setActiveTab(n); setNewCatInput(''); } setIsAddingCategory(false); }} className="flex items-center shrink-0"><input autoFocus className="w-28 px-2 py-1 text-sm border-b-2 border-blue-500 outline-none uppercase font-bold" placeholder="NEW..." value={newCatInput} onChange={(e) => setNewCatInput(e.target.value)} onBlur={() => setIsAddingCategory(false)} maxLength={10} /></form>
+                            )}
+                        </div>
+                        <div className="flex space-x-1 shrink-0">
+                            <button onClick={() => setActiveTab('Notifications')} className={`px-4 py-2 text-sm font-bold border-b-2 uppercase tracking-tight flex items-center space-x-2 ${activeTab === 'Notifications' ? 'border-red-500 text-red-600' : 'border-transparent text-slate-400 hover:text-slate-600'} ${hasUnread ? 'animate-blink-red' : ''}`}><Icon name="bell" size={14} /><span>Reminders</span></button>
+                            <button onClick={() => setActiveTab('Completed')} className={`px-4 py-2 text-sm font-bold border-b-2 uppercase tracking-tight flex items-center space-x-2 ${activeTab === 'Completed' ? 'border-green-500 text-green-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}><Icon name="check-circle" size={14} /><span>Finished</span></button>
+                            <button onClick={() => setActiveTab('Help')} className={`px-4 py-2 text-sm font-bold border-b-2 uppercase tracking-tight flex items-center space-x-2 ${activeTab === 'Help' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}><Icon name="help" size={14} /><span>Help</span></button>
+                        </div>
+                    </div>
+
+                    {/* Workspace */}
+                    <div id="work-desk" className="relative bg-slate-100/40 overflow-hidden shrink-0" style={{ height: `${topHeight}px` }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (activeTab === 'Help') return; const t = e.dataTransfer.getData('type'); if (t === 'note') { const id = e.dataTransfer.getData('noteId'); if (id) updateNote(id, { columnId: null, isPinned: false }); } }}>
+                        {activeTab === 'Help' ? <ManualView /> : (
+                            <React.Fragment>
+                                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 0)', backgroundSize: '32px 32px' }}></div>
+                                <button onClick={organizeGrid} className="absolute top-4 right-4 z-[60] bg-white border border-slate-200 p-2 rounded-xl shadow-sm hover:text-blue-600 transition-all" title="Auto-Grid"><Icon name="grid" size={20} /></button>
+                                <div className="relative w-full h-full p-6 overflow-y-auto no-scrollbar">
+                                    {visibleNotes.length === 0 ? <div className="absolute inset-0 flex items-center justify-center opacity-20 text-center"><div><Icon name="inbox" size={48} /><p className="font-black uppercase tracking-widest text-lg">Desk Clear</p></div></div> : visibleNotes.map(note => <DeskNote key={note.id} note={note} activeTab={activeTab} isDragged={draggedNoteId === note.id} onMouseDown={(e, id) => { if (e.target.closest('.no-drag')) return; setDraggedNoteId(id); setDragOffset({ x: e.clientX - e.currentTarget.getBoundingClientRect().left, y: e.clientY - e.currentTarget.getBoundingClientRect().top }); }} onDragStart={(e, id) => { e.dataTransfer.setData('type', 'note'); e.dataTransfer.setData('noteId', id); }} onUpdate={updateNote} />)}
+                                </div>
+                                <div className="absolute bottom-6 left-0 right-0 px-8 flex justify-between items-center pointer-events-none z-50">
+                                    <div className="flex space-x-2 pointer-events-auto"><div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { const id = e.dataTransfer.getData('noteId'); if (id) setNotes(p => p.filter(n => n.id !== id)); }} className="flex items-center justify-center bg-white text-slate-300 rounded-2xl border-2 border-dashed border-slate-200 hover:text-red-400 transition-all w-14 h-14 shadow-sm cursor-pointer" title="Trash"><Icon name="trash-2" size={28} /></div></div>
+                                    {!isCreationRestricted && <button onClick={addNote} className="flex items-center justify-center bg-blue-600 text-white rounded-2xl shadow-xl hover:bg-blue-700 w-14 h-14 pointer-events-auto transition-all"><Icon name="plus" size={32} /></button>}
+                                </div>
+                            </React.Fragment>
+                        )}
+                    </div>
+
+                    {/* Resize Pull Bar */}
+                    <div className="h-4 bg-slate-100 hover:bg-blue-50 border-y border-slate-200 cursor-row-resize flex items-center justify-center z-[80] group transition-colors select-none" onMouseDown={() => isResizing.current = true}>
+                        <div className="w-24 h-1.5 bg-slate-300 rounded-full group-hover:bg-blue-400 transition-colors shadow-inner" />
+                    </div>
+
+                    {/* Board */}
+                    <div className="flex-1 bg-white flex overflow-hidden p-4 space-x-3 items-start overflow-x-auto no-scrollbar">
+                        <div className="shrink-0 pt-2 px-1"><button disabled={columns.length >= 5} onClick={() => setDialog({ isOpen: true, type: 'ADD_COLUMN', inputValue: '' })} className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${columns.length >= 5 ? 'opacity-30' : 'bg-slate-100 text-slate-400 hover:bg-blue-50 hover:text-blue-500'}`} title="Add Column"><Icon name="plus" size={24} /></button></div>
+                        <div className="flex-1 flex space-x-3 h-full items-start overflow-hidden">
+                            {columns.map((col, idx) => {
+                                const isCollapsed = collapsedColumns[col];
+                                const colNotes = notes.filter(n => n.columnId === col && n.status !== 'done');
+                                return (
+                                    <div key={col} className={`flex flex-col h-full transition-all duration-300 ${isCollapsed ? 'max-w-[3rem]' : 'basis-0 flex-1 min-w-0 overflow-hidden'} ${draggedColumnIdx === idx ? 'opacity-30' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { const t = e.dataTransfer.getData('type'); if (t === 'note') { const id = e.dataTransfer.getData('noteId'); if (id) updateNote(id, { columnId: col }); } else if (t === 'column') handleColumnDrop(idx); }}>
+                                        {isCollapsed ? <button onClick={() => setCollapsedColumns(p => ({ ...p, [col]: false }))} className="w-10 h-10 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 rotate-90 transition-all"><Icon name="more-horizontal" size={18} /></button> : <div className="flex flex-col h-full bg-slate-50/60 rounded-2xl border border-slate-200 shadow-sm overflow-hidden"><div draggable onDragStart={(e) => { setDraggedColumnIdx(idx); e.dataTransfer.setData('type', 'column'); }} className="p-4 flex justify-between items-center shrink-0 group cursor-grab active:cursor-grabbing hover:bg-white/50 transition-colors"><h3 className="font-black text-slate-700 flex items-center text-[9px] uppercase truncate">{col}<span className="ml-1 px-1 py-0.5 bg-slate-200 text-slate-600 text-[8px] rounded-full font-bold">{colNotes.length}</span></h3><div className="flex space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setCollapsedColumns(p => ({ ...p, [col]: true }))} className="p-1 hover:bg-slate-200 rounded text-slate-400"><Icon name="maximize-2" size={10} className="rotate-45" /></button><button onClick={() => setDialog({ isOpen: true, type: 'DELETE_COLUMN', data: col })} className="p-1 hover:bg-red-100 rounded text-red-400"><Icon name="trash-2" size={10} /></button></div></div><div className="flex-1 overflow-y-auto px-1.5 pb-6 space-y-2 no-scrollbar">{colNotes.sort((a,b)=>(b.isPinned?1:0)-(a.isPinned?1:0)).map(note => <ListItem key={note.id} note={note} activeTab={activeTab} onUpdate={updateNote} onDragStart={(e, id) => { e.dataTransfer.setData('type', 'note'); e.dataTransfer.setData('noteId', id); }} />)}</div></div>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Dialogs */}
+                    {dialog.isOpen && (
+                        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4"><div className="bg-white rounded-3xl shadow-2xl w-full max-sm overflow-hidden animate-in fade-in zoom-in duration-200"><div className="p-6"><div className="flex items-center space-x-3 mb-4"><div className={`p-2 rounded-xl flex items-center justify-center ${['DELETE_COLUMN', 'DELETE_CATEGORY', 'SYSTEM_RESET'].includes(dialog.type) ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}><Icon name={['DELETE_COLUMN', 'DELETE_CATEGORY'].includes(dialog.type) ? "trash-2" : 'rotate-ccw'} size={24} /></div><h2 className="text-lg font-black uppercase tracking-tight text-slate-800">{dialog.type === 'DELETE_COLUMN' ? 'Delete Column?' : dialog.type === 'DELETE_CATEGORY' ? 'Delete Desk?' : dialog.type === 'SYSTEM_RESET' ? 'Wipe Everything?' : 'Backup Data?'}</h2></div>{dialog.type === 'ADD_COLUMN' ? <input autoFocus className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold uppercase" placeholder="NAME..." value={dialog.inputValue} onChange={(e) => setDialog({...dialog, inputValue: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && confirmDialog()} maxLength={10} /> : <p className="text-sm text-slate-500 leading-snug">{dialog.type === 'SYSTEM_RESET' ? 'This will permanently delete all your data and reset to factory settings.' : dialog.type === 'BACKUP_CONFIRM' ? 'This will download a JSON file containing all your data.' : 'Continue with deletion?'}</p>}</div><div className="flex border-t"><button onClick={() => setDialog({ isOpen: false, type: null, data: null, inputValue: '' })} className="flex-1 px-6 py-4 text-sm font-bold text-slate-400 uppercase tracking-widest">Cancel</button><button onClick={confirmDialog} className={`flex-1 px-6 py-4 text-sm font-bold text-white uppercase tracking-widest ${['DELETE_COLUMN', 'DELETE_CATEGORY', 'SYSTEM_RESET'].includes(dialog.type) ? 'bg-red-500' : 'bg-blue-600'}`}>{dialog.type === 'BACKUP_CONFIRM' ? 'Download' : 'Confirm'}</button></div></div></div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
