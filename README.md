@@ -29,4 +29,8 @@ As a product developed through rigorous systems-thinking, the versioning reflect
 * **Local-First:** All notes, desks, and layouts are saved exclusively in your browser’s localStorage.  
 * **User Responsibility:** Users are encouraged to use the built-in **Backup** feature to safeguard their data before clearing browser caches.
 
+## **🧠 Disclosure**
+
+I leveraged Generative AI as a "sparring partner" to bring my ideas to life. I believe the best products are born where human intuition meets machine efficiency.
+
 **Developed by santio.ignatius** | \[Feedback\](mailto:santio.ignatius@gmail.com?subject=My Work Desk V 2.0 Beta \- Feedback) — *V 2.0 (Beta) — Distributed for Free*
