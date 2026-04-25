@@ -211,7 +211,7 @@
                         <div className="manual-section">
                             <h2 className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-4 border-b border-blue-100 pb-2">06. Developer & Terms</h2>
                             <ul className="text-[11px] space-y-4 text-slate-600 leading-relaxed">
-                                <li><strong className="text-slate-800 font-bold">Ownership:</strong> This application was custom-developed and architected by <span className="font-black text-slate-800">santio.ignatius</span>.</li>
+                                <li><strong className="text-slate-800 font-bold">Ownership:</strong> This application was custom-developed and architected by <span className="font-black text-slate-800">santio.ignatius</span>. | <a href="mailto:santio.ignatius@gmail.com?subject=My Work Desk V 2.0 Beta - Feedback" className="text-blue-600 hover:underline">Feedback</a></li>
                                 <li><strong className="text-slate-800 font-bold">Distribution:</strong> This software is distributed for <span className="text-blue-600 font-bold">FREE</span>. Users are free to use it for their productivity needs.</li>
                                 <li><strong className="text-slate-800 font-bold">License:</strong> All rights reserved. V 2.0 (Beta) stable build.</li>
                             </ul>
@@ -238,7 +238,7 @@
             const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
             const [collapsedColumns, setCollapsedColumns] = useState({});
             
-            // --- BUG FIX: Calibrate Initial Height for V 2.0 (Beta) ---
+            // --- Calibrate Initial Height to ensure Kanban titles (approx 250px space) are always visible ---
             const [topHeight, setTopHeight] = useState(() => {
                 const available = window.innerHeight;
                 return Math.min(available * 0.65, available - 250);
@@ -442,7 +442,9 @@
                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">Standalone Private Web App V 2.0 (Beta)</p>
                                         <span className="bg-slate-100 text-slate-500 text-[7px] font-black uppercase px-1.5 py-0.5 rounded tracking-widest">Free to Use</span>
                                     </div>
-                                    <p className="text-[8px] text-blue-500 font-bold uppercase tracking-tighter mt-1">Developed by santio.ignatius</p>
+                                    <p className="text-[8px] text-blue-500 font-bold uppercase tracking-tighter mt-1">
+                                        Developed by santio.ignatius | <a href="mailto:santio.ignatius@gmail.com?subject=My Work Desk V 2.0 Beta - Feedback" className="hover:underline">Feedback</a>
+                                    </p>
                                 </div>
                             </div>
                         </div>
